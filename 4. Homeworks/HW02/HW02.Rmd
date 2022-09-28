@@ -10,18 +10,15 @@ output:
 ---
 
 ```{r packages, include=FALSE}
-#if (!require("easypackages")) install.packages("easypackages")
-library(easypackages)
-libraries("ggplot2", "cmdstanr", "HDInterval", "bayesplot")
-
-# readxl: for reading data set
-if (!require(readxl)) install.packages("readxl")
-library(readxl)
-
-if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
-BiocManager::install("genefilter", version = "3.15")
-if (!requireNamespace("modeest")) install.packages("modeest")
-library(modeest)
+# Package installation ======================================================================
+needed_packages = c("invgamma", "ggplot2", "cmdstanr", "HDInterval", "bayesplot", "readxl","BiocManager","modeest")
+for(i in 1:length(needed_packages)){
+  haspackage = require(needed_packages[i], character.only = TRUE)
+  if(haspackage == FALSE){
+    install.packages(needed_packages[i])
+  }
+  library(needed_packages[i], character.only = TRUE)
+}
 ```
 
 ## Context
@@ -57,7 +54,13 @@ Please submit your homework as an R Markdown file where all R syntax is embedded
 
 ```{r}
 #data
-data <- read_excel("C:/Users/geral/OneDrive - University of Iowa/PhD portfolio/2. Courses/3. Fall 2022/PSQF7375 Bayesian Psychometric Modeling (Jonathan Templin)/PSQF7375-Bayesian-Psychometric-Modeling/4. Homeworks/HW02/HW2data_psqf7375_bpmF2022.xlsx")
+data <- read_excel(file = "https://github.com/Bladimir-PF/PSQF7375-Bayesian-Psychometric-Modeling/blob/main/4.%20Homeworks/HW02/HW2data_psqf7375_bpmF2022.xlsx")
+
+library(openxlsx)
+df = read.xlsx("https://github.com/Bladimir-PF/PSQF7375-Bayesian-Psychometric-Modeling/blob/main/4.%20Homeworks/HW02/HW2data_psqf7375_bpmF2022.xlsx")
+
+data = rio::import('https://github.com/Bladimir-PF/PSQF7375-Bayesian-Psychometric-Modeling/blob/main/4.%20Homeworks/HW02/HW2data_psqf7375_bpmF2022.xlsx')
+
 
 # Centering variables
 data$verbal_cent30 = data$verbal-30
