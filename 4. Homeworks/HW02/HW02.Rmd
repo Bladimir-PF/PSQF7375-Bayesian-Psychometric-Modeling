@@ -1,0 +1,320 @@
+---
+title: 'Homework #2'
+subtitle: <center> <h1>Bayesian Psychometric Modeling (PSQF 7375, Fall 2022)</h1> </center>
+author:
+  - name: Geraldo Padilla
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    css: style.css
+---
+
+```{r packages, include=FALSE}
+#if (!require("easypackages")) install.packages("easypackages")
+library(easypackages)
+libraries("ggplot2", "cmdstanr", "HDInterval", "bayesplot")
+
+# readxl: for reading data set
+if (!require(readxl)) install.packages("readxl")
+library(readxl)
+
+if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+BiocManager::install("genefilter", version = "3.15")
+if (!requireNamespace("modeest")) install.packages("modeest")
+library(modeest)
+```
+
+## Context
+
+This homework focuses on a study of 220 undergraduates conducted in the Department of Wordology at Midwestern State University that explores the contributions of abilities and environment in playing Scrabble. Because of the heavy verbal component of playing Scrabble successfully, students were assessed on their verbal ability via the Boston Naming Test, which consists of 60 drawings the respondent must name correctly (1 point per drawing, such that possible scores range from 0 to 60). Also of interest was the extent to which spatial abilities contribute to Scrabble success. To that end, spatial ability was assessed with the Block Design test, in which participants are shown 17 patterns that must be re-created via colored blocks (1 point per drawing, such that possible scores range from 0 to 17). Finally, the contribution of environment was examined by randomly assigning participants to one of two kinds of opponents: an easy opponent (who was instructed to play simple words and to avoid the double- or triple-letter or word squares), or a hard opponent (who was instructed to play well in order to score as many points as possible). The outcome was the total score at the end of three Scrabble games, in which higher scores are better.
+
+## Task
+
+Your task is to estimate the general linear models needed to answer the research questions below. Use the easy opponent as the reference group, center verbal ability at 30, and center spatial ability at 10. The needed estimates may be provided by the model or they may need to be requested separately as linear combinations of model fixed effects (which will be part of a posterior distribution). 
+
+### For all questions below, when estimates are requested, report:
+
+* The posterior mean (EAP) 
+* The posterior standard deviation 
+* The 95% highest density posterior interval (lower and upper bound)
+
+### To estimate each model, use Stan with the following options: 
+
+* Four chains
+* Warmup of 2000 iterations
+* Sampling of 2000 iterations
+* Uninformative prior distributions for all model parameters (your choice of distribution) 
+
+You may work with other students in building the homework, but your answers and syntax must not be copied from anyone else.
+
+## Submission Instructions:
+
+Please submit your homework as an R Markdown file where all R syntax is embedded as chunks and each answer is provided using your words (text answers are required, not just output) following each question in the section marked **My Answer**. 
+
+**Name your file with your first and last name and submit your file to ICON.**
+
+## Data
+
+```{r}
+#data
+data <- read_excel("C:/Users/geral/OneDrive - University of Iowa/PhD portfolio/2. Courses/3. Fall 2022/PSQF7375 Bayesian Psychometric Modeling (Jonathan Templin)/PSQF7375-Bayesian-Psychometric-Modeling/4. Homeworks/HW02/HW2data_psqf7375_bpmF2022.xlsx")
+
+# Centering variables
+data$verbal_cent30 = data$verbal-30
+data$spatial_cent10 = data$spatial-10
+
+# Dummy variable for opponent
+data$op_hard = rep(0, nrow(data))
+data$op_hard[which(data$opponent == 2)] = 1
+
+# Interaction terms
+data$op_hardXverbal_cent30 = data$op_hard*data$verbal_cent30
+data$op_hardXspatial_cent10 = data$op_hard*data$spatial_cent10
+```
+
+The variables are:
+
+* PersonID: The ID number of the observation
+* opponent: Which type of opponent was played (1 == easy; 2 == hard)
+* verbal: Score on Boston Naming Test
+* spatial: Score on Block Design test
+* scrabble: Scabble score from game played
+
+### Section 1
+
+For section 1, estimate a model including additive linear effects of opponent type, verbal ability, and spatial ability. 
+
+```{r}
+model01_Syntax = "
+
+data {
+  int<lower=0> N;
+  vector[N] scrabble;
+  vector[N] verbal_cent30;
+  vector[N] spatial_cent10;
+  vector[N] op_hard;
+}
+
+parameters {
+  real beta0;
+  real betaVerbal30;
+  real betaSpatial10;
+  real betaOpHard;
+  real <lower=0> sigma;
+}
+
+model {
+  scrabble ~ normal(
+  beta0 + betaVerbal30*verbal_cent30 + betaSpatial10*spatial_cent10 + betaOpHard*op_hard, sigma);
+}
+
+"
+
+# building Stan data into R list
+mode01_StanData = list(
+  N = nrow(data),
+  scrabble = data$scrabble,
+  verbal_cent30 = data$verbal_cent30,
+  spatial_cent10 = data$spatial_cent10,
+  op_hard = data$op_hard
+)
+
+model01_Stan = cmdstan_model(stan_file = write_stan_file(model01_Syntax))
+#Stan translates the model into C++ and compile an executable using the string text in R
+
+model01_Samples = model01_Stan$sample(
+  data = mode01_StanData,
+  seed = 133,
+  chains = 4,
+  parallel_chains = 4,
+  iter_warmup = 2000,
+  iter_sampling = 2000
+)
+
+# assess convergence: summary of all parameters
+model01_Samples$summary()
+
+# maximum R-hat
+max(model01_Samples$summary()$rhat)
+
+# visualize posterior timeseries
+mcmc_trace(model01_Samples$draws())
+
+# posterior histograms
+mcmc_hist(model01_Samples$draws())
+
+# posterior densities
+mcmc_dens(model01_Samples$draws())
+
+```
+
+**1. Did your Markov chains converge? What evidence do you have to support your answer?**
+
+Yes, the Markov chains convergence. Something that supports this appreciation are the r-hat values, which are close to 1.
+
+**2. What is the amount of outcome variance leftover after controlling for the predictors?** (see estimate details above for what to report)
+
+The outcome variance leftover is 529 *(23.0^2).
+
+**3. What is the proportion of outcome variance accounted for by the model?** (see estimate details above for what to report)
+
+As an approximation, the R2 could be calculated as: ((1820.514-529)/1820.514)*100 =  70.94227
+
+**4. What is the estimate for the intercept?** (see estimate details above for what to report)
+
+The mean of the posterior distribution for this parameter is: 399.
+
+**5. What is the estimate for slope of easy vs. hard opponent?** (see estimate details above for what to report)
+
+The mean of the posterior distribution for this parameter is: -30.5.
+
+**6. What is the estimate for slope of verbal ability?** (see estimate details above for what to report)
+
+The mean of the posterior distribution for this parameter is: 5.84.
+
+**7. What is the estimate for slope of spatial ability?** (see estimate details above for what to report)
+
+The mean of the posterior distribution for this parameter is:  0.0767.
+
+### Section 2
+
+Building on the previous model, in section 2 estimate a model that examines the extent to which opponent type moderates the linear effect of verbal ability and opponent type moderates the linear effect of spatial ability.
+
+```{r}
+model02_Syntax = "
+
+data {
+  int<lower=0> N;
+  vector[N] scrabble;
+  vector[N] verbal_cent30;
+  vector[N] spatial_cent10;
+  vector[N] op_hard;
+  vector[N] op_hardXverbal_cent30;
+  vector[N] op_hardXspatial_cent10;
+}
+
+parameters {
+  real beta0;
+  real betaVerbal30;
+  real betaSpatial10;
+  real betaOpHard;
+  real betaHxV30;
+  real betaHxS10;
+  real<lower=0> sigma;
+}
+
+model {
+  scrabble ~ normal(
+  beta0 + betaVerbal30*verbal_cent30 + betaSpatial10*spatial_cent10 +     betaOpHard*op_hard + betaHxV30*op_hardXverbal_cent30 +
+  betaHxS10*op_hardXspatial_cent10, sigma);
+
+}
+
+"
+# building Stan data into R list
+mode02_StanData = list(
+  N = nrow(data),
+  scrabble = data$scrabble,
+  verbal_cent30 = data$verbal_cent30,
+  spatial_cent10 = data$spatial_cent10,
+  op_hard = data$op_hard,
+  op_hardXverbal_cent30 = data$op_hardXverbal_cent30,
+  op_hardXspatial_cent10 = data$op_hardXspatial_cent10
+)
+
+model02_Stan = cmdstan_model(stan_file = write_stan_file(model02_Syntax))
+#Stan translates the model into C++ and compile an executable using the string text in R
+
+model02_Samples = model02_Stan$sample(
+  data = mode02_StanData,
+  seed = 133,
+  chains = 4,
+  parallel_chains = 4,
+  iter_warmup = 2000,
+  iter_sampling = 2000
+)
+
+# assess convergence: summary of all parameters
+model02_Samples$summary()
+
+# maximum R-hat
+max(model02_Samples$summary()$rhat)
+
+# visualize posterior timeseries
+mcmc_trace(model02_Samples$draws())
+
+# posterior histograms
+mcmc_hist(model02_Samples$draws())
+
+# posterior densities
+mcmc_dens(model02_Samples$draws())
+```
+
+**8. What is the amount of outcome variance that is unexplained by the moderation model?** (see estimate details above for what to report)
+
+The amount of unexplained variance is 445.21 (21.1^2). 
+
+**9. What is the proportion of variance accounted for by the model?** (see estimate details above for what to report)
+
+As an approximation, the R2 could be calculated as: ((1820.514-445.21)/1820.514)*100 =  75.54482.
+
+**10. What is the proportion of variance accounted for by the model?** (see estimate details above for what to report)
+
+**My Answer**
+
+**11. What is the change in the EAP estimates (means) of the proportion of explained variance due to moderation by opponent?**
+
+**My Answer**
+
+**12. What is the change in the EAP estimates (means) of the proportion of explained variance due to moderation by opponent?**
+
+**My Answer**
+
+**13. What is the estimate for the intercept?** (see estimate details above for what to report)
+
+The new estimate for the intercept is 400.
+
+**14. What is the estimate for the slope of easy vs. hard opponent at verbal=30 and spatial=10?** (see estimate details above for what to report)
+
+The estimate for this slope is -31.4.
+
+**15. What is the estimate of the slope of verbal ability when playing easy opponents?** (see estimate details above for what to report)
+
+The estimate for this slope is 3.43.
+
+**16. What is the estimate of the slope of verbal ability when playing hard opponents?** (see estimate details above for what to report)
+
+The estimate for this slope is 3.43 + 3.57 = 7.
+
+**17. What is the estimate for the difference in the slope of verbal ability between easy vs. hard opponents** (see estimate details above for what to report)
+
+The difference in the slope of verbal ability between easy vs. hard opponents is 3.57.
+
+**18. What is the estimate for the slope of spatial ability when playing easy opponents** (see estimate details above for what to report)
+
+The estimate for this slope is -0.921.
+
+**19. What is the estimate for the slope of spatial ability when playing hard opponents** (see estimate details above for what to report)
+
+The estimate for this slope is -0.921 + 1.35 = .429.
+
+**20. What is the estimate for the difference in the slope of spatial ability between easy vs. hard opponents** (see estimate details above for what to report)
+
+The difference in the slope of spatial ability between easy vs. hard opponent is 1.35.
+
+### Section 3
+
+For section 3, please write a results section describing your findings. As a guide, I am including the results section from HW #6 of Lesa Hoffman's Intermediate Statistical Models course in a comment. You may borrow the text below, but will need to change the details to fit the Bayesian analysis.
+
+The extent to which verbal ability and spatial ability could predict Scrabble performance while playing either easy or hard opponents was examined in a sample of 220 undergraduates at a Midwestern State University. More specifically, a series of general linear models were estimated to examine the additive and interactive effects of ability and enviroment in playing three games of Scrabble. To serve as a baseline, a model with main effects of opponent type (easy vs. hard), verbal ability (the Boston Naming Test, centered at 30), and spatial ability (the Block Design Test, centered at 10) was examined first.
+
+This baseline main effects model accounted for *71%* of variance in Scrabble scores. The fixed intercept of *399* (sd = *2.29*) was the expected three-game Scrabble total for the reference person, someone with verbal ability of 30 and spatial ability of 10 playing an easy opponent. The *marginal main effect* of opponent of *-30.5* (sd = *3.09*) indicated that persons playing hard opponents scored *lower* than persons playing easy opponents. The *marginal main effect* of verbal ability of *5.84* (sd = *.290*) indicated that persons with higher verbal ability scored *higher* than persons with lower verbal ability. Finally, the *marginal main effect* of spatial ability of *0.0767* (sd = *.851*) indicated that persons with higher spatial ability scored *higher* than persons with lower spatial ability. 
+
+Next, to examine the extent to which environment moderates the effects of ability, two-way interactions of opponent by verbal ability and opponent by spatial ability were added to the model. The augmented model accounted for *75,5%* of variance in Scrabble scores. The addition of the two opponent-related interactions resulted in an *increase of explained variance* of *4,5 percentage points*. First, the *marginal interaction* of opponent by verbal ability of *3.57* (sd = *.554*) revealed that the effect of verbal ability was *more positive* when playing hard opponents as opposed to easy opponents. More specifically, the *simple main effect* of verbal ability when playing easy opponents of *3.43* (sd = *.455*) was *positive*, and the *simple main effect* of verbal ability when playing hard opponents of *7* was *more positive* . 
+
+Second, the *simple interaction* of opponent by spatial ability of *1.35* (sd = *1.60*) revealed that the effect of spatial ability was *les negative* when playing hard opponents as opposed to easy opponents. More specifically, the *simple main effect* of spatial ability when playing easy opponents of *-0.921* (sd = *1.25*) was *negative* , and the *simple main effect* of spatial ability when playing hard opponents of *.429* was *positive* .
+
+
+
+
+
