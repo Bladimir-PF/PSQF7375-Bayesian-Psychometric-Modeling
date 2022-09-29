@@ -19,6 +19,7 @@ for(i in 1:length(needed_packages)){
   }
   library(needed_packages[i], character.only = TRUE)
 }
+rm(haspackage, needed_packages, i)
 ```
 
 ## Context
@@ -54,13 +55,7 @@ Please submit your homework as an R Markdown file where all R syntax is embedded
 
 ```{r}
 #data
-data <- read_excel(file = "https://github.com/Bladimir-PF/PSQF7375-Bayesian-Psychometric-Modeling/blob/main/4.%20Homeworks/HW02/HW2data_psqf7375_bpmF2022.xlsx")
-
-library(openxlsx)
-df = read.xlsx("https://github.com/Bladimir-PF/PSQF7375-Bayesian-Psychometric-Modeling/blob/main/4.%20Homeworks/HW02/HW2data_psqf7375_bpmF2022.xlsx")
-
-data = rio::import('https://github.com/Bladimir-PF/PSQF7375-Bayesian-Psychometric-Modeling/blob/main/4.%20Homeworks/HW02/HW2data_psqf7375_bpmF2022.xlsx')
-
+data <- read.csv(file = "https://raw.githubusercontent.com/Bladimir-PF/PSQF7375-Bayesian-Psychometric-Modeling/main/4.%20Homeworks/HW02/HW2data_psqf7375_bpmF2022.csv")
 
 # Centering variables
 data$verbal_cent30 = data$verbal-30
@@ -85,9 +80,83 @@ The variables are:
 
 ### Section 1
 
-For section 1, estimate a model including additive linear effects of opponent type, verbal ability, and spatial ability. 
+For section 1, estimate a model including additive linear effects of opponent type, verbal ability, and spatial ability.
 
-```{r}
+```{r, results='hide'}
+model_Syntax = "
+
+data {
+  int<lower=0> N;         // number of observations
+  int<lower=0> P;         // number of predictors (plus column for intercept)
+  matrix[N, P] X;         // model.matrix() from R 
+  vector[N] y;            // outcome
+  
+  vector[P] meanBeta;       // prior mean vector for coefficients
+  matrix[P, P] covBeta; // prior covariance matrix for coefficients
+  
+  real sigmaRate;         // prior rate parameter for residual standard deviation
+}
+
+parameters {
+  vector[P] beta;         // vector of coefficients for Beta
+  real<lower=0> sigma;    // residual standard deviation
+}
+
+model {
+  beta ~ multi_normal(meanBeta, covBeta); // prior for coefficients
+  sigma ~ exponential(sigmaRate);         // prior for sigma
+  y ~ normal(X*beta, sigma);              // linear model
+}
+
+"
+#Model formula
+model_formula <- formula(scrabble ~ verbal_cent30 + spatial_cent10 + op_hard, data = data)
+
+# grab model matrix
+model_predictorMatrix = model.matrix(model_formula, data = data)
+dim(model_predictorMatrix)
+
+# find details of model matrix
+N = nrow(model_predictorMatrix)
+P = ncol(model_predictorMatrix)
+
+# build matrices of hyper parameters (for priors)
+meanBeta = rep(0, P)
+covBeta = diag(x = 500, nrow = P, ncol = P)
+sigmaRate = .5
+
+# build Stan data from model matrix
+model_data = list(
+  N = N,
+  P = P,
+  X = model_predictorMatrix,
+  y = data$scrabble,
+  meanBeta = meanBeta,
+  covBeta = covBeta,
+  sigmaRate = sigmaRate
+)
+
+model_Stan = cmdstan_model(stan_file = write_stan_file(model_Syntax))
+
+model_Samples = model_Stan$sample(
+  data = model_data,
+  seed = 133,
+  chains = 4,
+  parallel_chains = 4,
+  iter_warmup = 2000,
+  iter_sampling = 2000
+)
+```
+
+```{r, results='hide'}
+# assess convergence: summary of all parameters
+model_Samples$summary()
+
+# maximum R-hat
+max(model_Samples$summary()$rhat)
+```
+
+```{r, results='hide'}
 model01_Syntax = "
 
 data {
@@ -106,9 +175,18 @@ parameters {
   real <lower=0> sigma;
 }
 
+
 model {
+  beta0 ~ normal(0,500);
+  betaVerbal30 ~ normal(0,500);
+  betaSpatial10 ~ normal(0,500);
+  betaOpHard ~ normal(0,500);
+  
+  sigma ~ exponential(.5); // prior for sigma
+  
   scrabble ~ normal(
-  beta0 + betaVerbal30*verbal_cent30 + betaSpatial10*spatial_cent10 + betaOpHard*op_hard, sigma);
+  beta0 + betaVerbal30*verbal_cent30 +
+  betaSpatial10*spatial_cent10 + betaOpHard*op_hard, sigma);
 }
 
 "
@@ -122,9 +200,10 @@ mode01_StanData = list(
   op_hard = data$op_hard
 )
 
-model01_Stan = cmdstan_model(stan_file = write_stan_file(model01_Syntax))
 #Stan translates the model into C++ and compile an executable using the string text in R
+model01_Stan = cmdstan_model(stan_file = write_stan_file(model01_Syntax))
 
+#Model specifications
 model01_Samples = model01_Stan$sample(
   data = mode01_StanData,
   seed = 133,
@@ -133,57 +212,74 @@ model01_Samples = model01_Stan$sample(
   iter_warmup = 2000,
   iter_sampling = 2000
 )
+```
 
-# assess convergence: summary of all parameters
+```{r, results='hold', echo=FALSE}
+print('summary of all parameters')
 model01_Samples$summary()
 
-# maximum R-hat
+print('maximum R-hat')
 max(model01_Samples$summary()$rhat)
 
 # visualize posterior timeseries
-mcmc_trace(model01_Samples$draws())
+#mcmc_trace(model01_Samples$draws())
 
 # posterior histograms
-mcmc_hist(model01_Samples$draws())
+#mcmc_hist(model01_Samples$draws())
 
 # posterior densities
-mcmc_dens(model01_Samples$draws())
-
+#mcmc_dens(model01_Samples$draws())
 ```
 
 **1. Did your Markov chains converge? What evidence do you have to support your answer?**
 
-Yes, the Markov chains convergence. Something that supports this appreciation are the r-hat values, which are close to 1.
+Yes, the Markov chains converged Something that supports this are the r-hat values, which are close to 1, where the maximum value is 1.000341. 
 
 **2. What is the amount of outcome variance leftover after controlling for the predictors?** (see estimate details above for what to report)
 
-The outcome variance leftover is 529 *(23.0^2).
+The outcome variance leftover is 501.76 (22.4.0^2).
 
 **3. What is the proportion of outcome variance accounted for by the model?** (see estimate details above for what to report)
 
-As an approximation, the R2 could be calculated as: ((1820.514-529)/1820.514)*100 =  70.94227
+As an approximation, the R2 could be calculated as: ((1820.514-529)/1820.514)*100 = 70.94.
 
 **4. What is the estimate for the intercept?** (see estimate details above for what to report)
 
-The mean of the posterior distribution for this parameter is: 399.
+```{r, include=FALSE}
+hdi(model01_Samples$draws("beta0"))
+```
+
+The mean of the posterior distribution for this parameter is: 399 (sd = 1.61; HDP .95 = 394.237, 403.144).
 
 **5. What is the estimate for slope of easy vs. hard opponent?** (see estimate details above for what to report)
 
-The mean of the posterior distribution for this parameter is: -30.5.
+```{r, include=FALSE}
+hdi(model01_Samples$draws("betaOpHard"))
+```
+
+The mean of the posterior distribution for this parameter is: -30.4 (sd = 3.10; HDP .95 = -36.4060, -24.2185).
 
 **6. What is the estimate for slope of verbal ability?** (see estimate details above for what to report)
 
-The mean of the posterior distribution for this parameter is: 5.84.
+```{r, include=FALSE}
+hdi(model01_Samples$draws("betaVerbal30"))
+```
+
+The mean of the posterior distribution for this parameter is: 5.84 (sd = .272; HDP .95 = 5.28123, 6.34154).
 
 **7. What is the estimate for slope of spatial ability?** (see estimate details above for what to report)
 
-The mean of the posterior distribution for this parameter is:  0.0767.
+```{r, include=FALSE}
+hdi(model01_Samples$draws("betaSpatial10"))
+```
+
+The mean of the posterior distribution for this parameter is:  .0815 (sd = .839; HDP .95 = -1.52968,  1.70716).
 
 ### Section 2
 
 Building on the previous model, in section 2 estimate a model that examines the extent to which opponent type moderates the linear effect of verbal ability and opponent type moderates the linear effect of spatial ability.
 
-```{r}
+```{r, results='hide'}
 model02_Syntax = "
 
 data {
@@ -207,8 +303,18 @@ parameters {
 }
 
 model {
+  beta0 ~ normal(0,500);
+  betaVerbal30 ~ normal(0,500);
+  betaSpatial10 ~ normal(0,500);
+  betaOpHard ~ normal(0,500);
+  betaHxV30 ~ normal(0,500);
+  betaHxS10 ~ normal(0,500);
+  
+  sigma ~ exponential(.5); // prior for sigma
+  
   scrabble ~ normal(
-  beta0 + betaVerbal30*verbal_cent30 + betaSpatial10*spatial_cent10 +     betaOpHard*op_hard + betaHxV30*op_hardXverbal_cent30 +
+  beta0 + betaVerbal30*verbal_cent30 + betaSpatial10*spatial_cent10 + betaOpHard*op_hard +
+  betaHxV30*op_hardXverbal_cent30 +
   betaHxS10*op_hardXspatial_cent10, sigma);
 
 }
@@ -225,9 +331,10 @@ mode02_StanData = list(
   op_hardXspatial_cent10 = data$op_hardXspatial_cent10
 )
 
-model02_Stan = cmdstan_model(stan_file = write_stan_file(model02_Syntax))
 #Stan translates the model into C++ and compile an executable using the string text in R
+model02_Stan = cmdstan_model(stan_file = write_stan_file(model02_Syntax))
 
+#Model specifications
 model02_Samples = model02_Stan$sample(
   data = mode02_StanData,
   seed = 133,
@@ -236,30 +343,33 @@ model02_Samples = model02_Stan$sample(
   iter_warmup = 2000,
   iter_sampling = 2000
 )
+```
 
-# assess convergence: summary of all parameters
+
+```{r, results='hold', echo=FALSE}
+print('Summary of all parameters')
 model02_Samples$summary()
 
-# maximum R-hat
+print('maximum R-hat')
 max(model02_Samples$summary()$rhat)
 
 # visualize posterior timeseries
-mcmc_trace(model02_Samples$draws())
+#mcmc_trace(model02_Samples$draws())
 
 # posterior histograms
-mcmc_hist(model02_Samples$draws())
+#mcmc_hist(model02_Samples$draws())
 
 # posterior densities
-mcmc_dens(model02_Samples$draws())
+#mcmc_dens(model02_Samples$draws())
 ```
 
 **8. What is the amount of outcome variance that is unexplained by the moderation model?** (see estimate details above for what to report)
 
-The amount of unexplained variance is 445.21 (21.1^2). 
+The amount of unexplained variance is 424.36 (20.6^2). 
 
 **9. What is the proportion of variance accounted for by the model?** (see estimate details above for what to report)
 
-As an approximation, the R2 could be calculated as: ((1820.514-445.21)/1820.514)*100 =  75.54482.
+As an approximation, the R2 could be calculated as: ((1820.514-445.21)/1820.514)*100 =  75.54.
 
 **10. What is the proportion of variance accounted for by the model?** (see estimate details above for what to report)
 
@@ -275,39 +385,69 @@ As an approximation, the R2 could be calculated as: ((1820.514-445.21)/1820.514)
 
 **13. What is the estimate for the intercept?** (see estimate details above for what to report)
 
-The new estimate for the intercept is 400.
+```{r, include=FALSE}
+hdi(model02_Samples$draws("beta0"))
+```
+
+The new estimate for the intercept is 400 (sd = 1.88; HDP .95 = 395.338, 403.475).
 
 **14. What is the estimate for the slope of easy vs. hard opponent at verbal=30 and spatial=10?** (see estimate details above for what to report)
 
-The estimate for this slope is -31.4.
+```{r, include=FALSE}
+hdi(model02_Samples$draws("betaOpHard"))
+```
+
+The estimate for this slope is -31.3 (sd = 2.78; HDP .95 = -36.7193, -25.9023).
 
 **15. What is the estimate of the slope of verbal ability when playing easy opponents?** (see estimate details above for what to report)
 
-The estimate for this slope is 3.43.
+```{r, include=FALSE}
+hdi(model02_Samples$draws("betaVerbal30"))
+```
+
+The estimate for this slope is 3.43 (sd = .439; HDP .95 = 2.60202, 4.31430).
 
 **16. What is the estimate of the slope of verbal ability when playing hard opponents?** (see estimate details above for what to report)
+
+```{r, include=FALSE}
+hdi(model02_Samples$draws("betaSpatial10"))
+```
 
 The estimate for this slope is 3.43 + 3.57 = 7.
 
 **17. What is the estimate for the difference in the slope of verbal ability between easy vs. hard opponents** (see estimate details above for what to report)
 
-The difference in the slope of verbal ability between easy vs. hard opponents is 3.57.
+```{r, include=FALSE}
+hdi(model02_Samples$draws("betaHxV30"))
+```
+
+The difference in the slope of verbal ability between easy vs. hard opponents is 3.58 (sd = .539; HDP .95 = 2.52128, 4.61988).
 
 **18. What is the estimate for the slope of spatial ability when playing easy opponents** (see estimate details above for what to report)
 
-The estimate for this slope is -0.921.
+```{r, include=FALSE}
+hdi(model02_Samples$draws("betaSpatial10"))
+```
+
+The estimate for this slope is -0.932 (sd = 1.25; HDP .95 = -3.38355, 1.49540).
 
 **19. What is the estimate for the slope of spatial ability when playing hard opponents** (see estimate details above for what to report)
+
+```{r, include=FALSE}
+hdi(model02_Samples$draws("betaSpatial10"))
+```
 
 The estimate for this slope is -0.921 + 1.35 = .429.
 
 **20. What is the estimate for the difference in the slope of spatial ability between easy vs. hard opponents** (see estimate details above for what to report)
 
-The difference in the slope of spatial ability between easy vs. hard opponent is 1.35.
+```{r, include=FALSE}
+hdi(model02_Samples$draws("betaHxS10"))
+```
+
+The difference in the slope of spatial ability between easy vs. hard opponent is 1.35 (sd = 1.60; HDP .95 = -1.76916,  4.50103).
 
 ### Section 3
-
-For section 3, please write a results section describing your findings. As a guide, I am including the results section from HW #6 of Lesa Hoffman's Intermediate Statistical Models course in a comment. You may borrow the text below, but will need to change the details to fit the Bayesian analysis.
 
 The extent to which verbal ability and spatial ability could predict Scrabble performance while playing either easy or hard opponents was examined in a sample of 220 undergraduates at a Midwestern State University. More specifically, a series of general linear models were estimated to examine the additive and interactive effects of ability and enviroment in playing three games of Scrabble. To serve as a baseline, a model with main effects of opponent type (easy vs. hard), verbal ability (the Boston Naming Test, centered at 30), and spatial ability (the Block Design Test, centered at 10) was examined first.
 
@@ -315,7 +455,7 @@ This baseline main effects model accounted for *71%* of variance in Scrabble sco
 
 Next, to examine the extent to which environment moderates the effects of ability, two-way interactions of opponent by verbal ability and opponent by spatial ability were added to the model. The augmented model accounted for *75,5%* of variance in Scrabble scores. The addition of the two opponent-related interactions resulted in an *increase of explained variance* of *4,5 percentage points*. First, the *marginal interaction* of opponent by verbal ability of *3.57* (sd = *.554*) revealed that the effect of verbal ability was *more positive* when playing hard opponents as opposed to easy opponents. More specifically, the *simple main effect* of verbal ability when playing easy opponents of *3.43* (sd = *.455*) was *positive*, and the *simple main effect* of verbal ability when playing hard opponents of *7* was *more positive* . 
 
-Second, the *simple interaction* of opponent by spatial ability of *1.35* (sd = *1.60*) revealed that the effect of spatial ability was *les negative* when playing hard opponents as opposed to easy opponents. More specifically, the *simple main effect* of spatial ability when playing easy opponents of *-0.921* (sd = *1.25*) was *negative* , and the *simple main effect* of spatial ability when playing hard opponents of *.429* was *positive* .
+Second, the *simple interaction* of opponent by spatial ability of *1.35* (sd = *1.60*) revealed that the effect of spatial ability was *less negative* when playing hard opponents as opposed to easy opponents. More specifically, the *simple main effect* of spatial ability when playing easy opponents of *-0.921* (sd = *1.25*) was *negative* , and the *simple main effect* of spatial ability when playing hard opponents of *.429* was *positive* .
 
 
 
