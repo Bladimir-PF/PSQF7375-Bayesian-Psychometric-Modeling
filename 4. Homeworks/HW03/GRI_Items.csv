@@ -1,0 +1,35 @@
+Item,Question
+gri1,gri1: I would like to cut back on my gambling.
+gri2,gri2: There are few things I would rather do than gamble.
+gri3,"gri3: If I lost a lot of money gambling one day, I would be more likely to want to play again the following day."
+Rgri4,Rgri4: I enjoy talking with my family and friends about my past gambling experiences.
+gri5,gri5: I find it necessary to gamble with larger amounts of money (than when I first gambled) for gambling to be exciting.
+gri6,gri6: I have gone to great lengths to obtain money for gambling.
+gri7,gri7: I feel 'high' when I gamble.
+gri8,gri8: I worry that I am spending too much money gambling.
+gri9,gri9: I feel restless when I try to cut down or stop gambling.
+gri10,gri10: It bothers me when I have no money to gamble.
+gri11,gri11: I gamble to take my mind off my worries.
+Rgri12,"Rgri12: When I lose money gambling, it is a long time before I gamble again."
+gri13,gri13: I find it difficult to stop gambling.
+gri14,gri14: I am drawn more by the thrill of gambling than by the money I could win.
+gri15,gri15: I am private about my gambling experiences.
+gri16,gri16: I am ashamed of the things I've done to obtain money for gambling.
+gri17,gri17: Gambling helps me to feel less anxious.
+gri18,"gri18: My family, coworkers, or others who are close to me disapprove of my gambling."
+gri19,gri19: I would like to stop gambling.
+Rgri20,"Rgri20: When gambling, I have an amount of money in mind that I am willing to lose, and I stop if I reach that point."
+gri21,gri21: It is hard to get my mind off gambling.
+gri22,gri22: Gambling has hurt my financial situation.
+gri23,gri23: I gamble to improve my mood.
+gri24,gri24: I worry that I am spending too much time gambling.
+,
+Answers,Label
+1,strongly disagree
+2,disagree
+3,slightly disagree
+4,slightly agree
+5,agree
+6,strongly agree
+,
+Note:,"Items beginning with an ""r"" have already been reverse-coded."
